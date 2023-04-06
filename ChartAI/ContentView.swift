@@ -222,7 +222,7 @@ struct ContentView: View {
     }
 
     func testConnection() {
-        let url = URL(string: "http://10.37.10.185:8001/test_connection/")!
+        let url = URL(string: "http://192.168.255.207:8000/test_connection/")!
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("Error connecting to the server: \(error.localizedDescription)")
@@ -238,7 +238,7 @@ struct ContentView: View {
         guard let audioRecorder = audioRecorder else { return }
             let audioData = try? Data(contentsOf: audioRecorder.url)
             let boundary = UUID().uuidString
-            var request = URLRequest(url: URL(string: "http://10.37.10.185:8001/audio/create/")!)
+            var request = URLRequest(url: URL(string: "http://192.168.255.207:8000/audio/create/")!)
             request.httpMethod = "POST"
             request.addValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
             var body = Data()
@@ -271,7 +271,7 @@ struct ResponseView: View {
 
     var body: some View {
         VStack {
-            Text("Transcription:")
+            Text("Session Summary:")
                 .font(.title)
                 .foregroundColor(Color.primary)
                 .padding(.bottom, 10)
