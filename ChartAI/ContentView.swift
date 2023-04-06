@@ -48,6 +48,7 @@ struct ContentView: View {
     @State private var timerSubscription: AnyCancellable?
     @State private var showSuccessAlert = false
     @State private var isConnectedToDjangoBackend = false
+    @State private var messageText = ""
 
 
     var body: some View {
@@ -104,14 +105,20 @@ struct ContentView: View {
                     .buttonStyle(PressedButtonStyle()) // Add this line
                 }
             }
+            if showSuccessAlert {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.black.opacity(0.7))
+                    Text(messageText)
+                        .font(.system(size: 20))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 300, height: 80)
+                .transition(.opacity)
+                .padding(.bottom, 500) // Add this line
+            }
         }
-        .alert(isPresented: $showSuccessAlert) {
-            Alert(
-                title: Text("Success"),
-                message: Text("Your recording has been successfully uploaded."),
-                dismissButton: .default(Text("OK"))
-            )
-        }
+        .onAppear(perform: testConnection)
     }
     
     func startRecording() {
@@ -177,11 +184,38 @@ struct ContentView: View {
         playbackManager.stopPlayback()
     }
     
+    func showMessage() {
+        withAnimation {
+            self.showSuccessAlert = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            withAnimation {
+                self.showSuccessAlert = false
+            }
+        }
+    }
+    
+    func testConnection() {
+        // Replace the URL with your backend server URL
+        let url = URL(string: "http://192.168.255.207:8000/test_connection/")!
+
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                print("Error connecting to the server: \(error.localizedDescription)")
+            } else if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                print("Server connection test response: \(responseString)")
+            } else {
+                print("No data received from the server.")
+            }
+        }.resume()
+    }
+
+    
     func uploadRecording() {
         guard let audioRecorder = audioRecorder else { return }
             let audioData = try? Data(contentsOf: audioRecorder.url)
             let boundary = UUID().uuidString
-            var request = URLRequest(url: URL(string: "http://192.168.253.49:8000/chartAi/upload_audio/")!)
+            var request = URLRequest(url: URL(string: "http://192.168.255.207:8000/audio/create/")!)
             request.httpMethod = "POST"
             request.addValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
             var body = Data()
@@ -201,7 +235,8 @@ struct ContentView: View {
             if let data = data, let responseString = String(data: data, encoding: .utf8) {
                 print("Upload response: \(responseString)")
                 DispatchQueue.main.async {
-                    self.showSuccessAlert = true
+                    self.messageText = "Recording uploaded successfully."
+                    self.showMessage()
                 }
             }
         }.resume()
