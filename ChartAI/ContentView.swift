@@ -4,6 +4,13 @@ import Combine
 import Foundation
 import AVKit
 
+extension Color {
+    static let chatGPTBackground = Color(UIColor { traitCollection -> UIColor in
+        return traitCollection.userInterfaceStyle == .dark
+            ? UIColor(red: 21/255, green: 32/255, blue: 43/255, alpha: 1)
+            : UIColor.systemBackground
+    })
+}
 
 class AudioPlaybackManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var isPlaying = false
@@ -48,79 +55,90 @@ struct ContentView: View {
     @State private var timerSubscription: AnyCancellable?
     @State private var showSuccessAlert = false
     @State private var isConnectedToDjangoBackend = false
+    @State private var navigationLink: NavigationLink<EmptyView, ResponseView>?
+    @State private var navigateToResponseView: String? = nil
+    @State private var responseText: String = ""
     @State private var messageText = ""
+    @State private var navigateToResponseViewIsNotNil: Bool = false
+    @State private var showResponseView = false
+    @State private var responseViewValue: String? = nil
 
 
     var body: some View {
-        ZStack {
-            Color(red: 21/255, green: 32/255, blue: 43/255) // ChatGPT Dark Mode Background Color
-                .edgesIgnoringSafeArea(.all)
-            VStack {
-                Spacer()
+        NavigationView {
+            ZStack {
+//                Color(red: 21/255, green: 32/255, blue: 43/255) // ChatGPT Dark Mode Background Color
+                Color.chatGPTBackground
+                    .edgesIgnoringSafeArea(.all)
                 VStack {
-                    Button(action: {
-                        if self.isRecording {
-                            self.stopRecording()
-                        } else {
-                            self.startRecording()
+                    Spacer()
+                    VStack {
+                        Button(action: {
+                            if self.isRecording {
+                                self.stopRecording()
+                            } else {
+                                self.startRecording()
+                            }
+                        }) {
+                            Text(isRecording ? "Stop" : "Record")
+                                .frame(width: 120, height: 120)
+                                .foregroundColor(Color.white)
+                                .background(Color(red: 235/255, green: 64/255, blue: 52/255)) // Complementary shade of red
+                                .clipShape(Circle())
                         }
-                    }) {
-                        Text(isRecording ? "Stop" : "Record")
-                            .frame(width: 120, height: 120)
-                            .foregroundColor(Color.white)
-                            .background(Color(red: 235/255, green: 64/255, blue: 52/255)) // Complementary shade of red
-                            .clipShape(Circle())
+                        .scaleEffect(buttonScale)
+                        .buttonStyle(PressedButtonStyle()) // Add this line
                     }
-                    .scaleEffect(buttonScale)
-                    .buttonStyle(PressedButtonStyle()) // Add this line
-                }
-                Spacer()
-                HStack {
-                    Button(action: {
-                        if self.playbackManager.isPlaying {
-                            self.stopPlayback()
-                        } else {
-                            self.playRecording()
+                    Spacer()
+                    HStack {
+                        Button(action: {
+                            if self.playbackManager.isPlaying {
+                                self.stopPlayback()
+                            } else {
+                                self.playRecording()
+                            }
+                        }) {
+                            Text(playbackManager.isPlaying ? "Stop Playback" : "Play Recording")
+                                .padding()
+                                .foregroundColor(Color.white)
+                                .background(Color(red: 88/255, green: 86/255, blue: 214/255)) // Purple color
+                                .cornerRadius(10)
                         }
-                    }) {
-                        Text(playbackManager.isPlaying ? "Stop Playback" : "Play Recording")
-                            .padding()
-                            .foregroundColor(Color.white)
-                            .background(Color(red: 88/255, green: 86/255, blue: 214/255)) // Purple color
-                            .cornerRadius(10)
+                        .disabled(isRecording)
+                        .buttonStyle(PressedButtonStyle()) // Add this line
+                        
+                        Button(action: {
+                            self.uploadRecording()
+                        }) {
+                            Text("Upload Recording")
+                                .padding()
+                                .foregroundColor(Color.white)
+                                .background(Color(red: 30/255, green: 144/255, blue: 255/255)) // Light Blue
+                                .cornerRadius(10)
+                        }
+                        .disabled(isRecording || playbackManager.isPlaying)
+                        .buttonStyle(PressedButtonStyle()) // Add this line
                     }
-                    .disabled(isRecording)
-                    .buttonStyle(PressedButtonStyle()) // Add this line
-
-                    Button(action: {
-                        self.uploadRecording()
-                    }) {
-                        Text("Upload Recording")
-                            .padding()
-                            .foregroundColor(Color.white)
-                            .background(Color(red: 30/255, green: 144/255, blue: 255/255)) // Light Blue
-                            .cornerRadius(10)
+                }
+                if showSuccessAlert {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.black.opacity(0.7))
+                        Text(messageText)
+                            .font(.system(size: 20))
+                            .foregroundColor(.white)
                     }
-                    .disabled(isRecording || playbackManager.isPlaying)
-                    .buttonStyle(PressedButtonStyle()) // Add this line
+                    .frame(width: 300, height: 80)
+                    .transition(.opacity)
+                    .padding(.bottom, 500) // Add this line
                 }
+                NavigationLink("", destination: ResponseView(responseText: responseViewValue ?? ""), isActive: $showResponseView)
+                    .opacity(0)
             }
-            if showSuccessAlert {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.black.opacity(0.7))
-                    Text(messageText)
-                        .font(.system(size: 20))
-                        .foregroundColor(.white)
-                }
-                .frame(width: 300, height: 80)
-                .transition(.opacity)
-                .padding(.bottom, 500) // Add this line
-            }
+            .onAppear(perform: testConnection)
         }
-        .onAppear(perform: testConnection)
     }
-    
+
     func startRecording() {
         let documentPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let audioURL = documentPath.appendingPathComponent("recording.m4a")
@@ -141,17 +159,17 @@ struct ContentView: View {
         isRecording = true
         startTimer()
     }
-    
+
     func stopRecording() {
         audioRecorder?.stop()
         isRecording = false
-        
+
         timerSubscription?.cancel()
         timerSubscription = nil
-        
+
         showAlert = true
     }
-    
+
     func startTimer() {
         timerSubscription = Timer.publish(every: 0.1, on: .main, in: .common)
             .autoconnect()
@@ -159,7 +177,7 @@ struct ContentView: View {
                 self.updateButtonScale()
             }
     }
-    
+
     func updateButtonScale() {
         guard let recorder = audioRecorder, isRecording else { return }
         recorder.updateMeters()
@@ -173,17 +191,25 @@ struct ContentView: View {
     func meterLevel(forPower power: Float) -> CGFloat {
         return CGFloat(min(max(0, (power + 160) / 160), 1))
     }
-    
+
     func playRecording() {
         let documentPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let audioURL = documentPath.appendingPathComponent("recording.m4a")
-        playbackManager.playRecording(url: audioURL)
+        
+        // Debugging: print the file path
+        print("Audio file URL: \(audioURL)")
+        
+        if FileManager.default.fileExists(atPath: audioURL.path) {
+            playbackManager.playRecording(url: audioURL)
+        } else {
+            print("Audio file not found at the specified path")
+        }
     }
-    
+
     func stopPlayback() {
         playbackManager.stopPlayback()
     }
-    
+
     func showMessage() {
         withAnimation {
             self.showSuccessAlert = true
@@ -194,11 +220,9 @@ struct ContentView: View {
             }
         }
     }
-    
-    func testConnection() {
-        // Replace the URL with your backend server URL
-        let url = URL(string: "http://192.168.255.207:8000/test_connection/")!
 
+    func testConnection() {
+        let url = URL(string: "http://10.37.10.185:8001/test_connection/")!
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("Error connecting to the server: \(error.localizedDescription)")
@@ -210,12 +234,11 @@ struct ContentView: View {
         }.resume()
     }
 
-    
     func uploadRecording() {
         guard let audioRecorder = audioRecorder else { return }
             let audioData = try? Data(contentsOf: audioRecorder.url)
             let boundary = UUID().uuidString
-            var request = URLRequest(url: URL(string: "http://192.168.255.207:8000/audio/create/")!)
+            var request = URLRequest(url: URL(string: "http://10.37.10.185:8001/audio/create/")!)
             request.httpMethod = "POST"
             request.addValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
             var body = Data()
@@ -235,10 +258,29 @@ struct ContentView: View {
             if let data = data, let responseString = String(data: data, encoding: .utf8) {
                 print("Upload response: \(responseString)")
                 DispatchQueue.main.async {
-                    self.messageText = "Recording uploaded successfully."
-                    self.showMessage()
+                    self.responseViewValue = responseString
+                    self.showResponseView = true
                 }
             }
         }.resume()
+    }
+}
+
+struct ResponseView: View {
+    let responseText: String
+
+    var body: some View {
+        VStack {
+            Text("Transcription:")
+                .font(.title)
+                .foregroundColor(Color.primary)
+                .padding(.bottom, 10)
+            Text(responseText)
+                .font(.body)
+                .foregroundColor(Color.primary)
+                .padding()
+            Spacer()
+        }
+        .background(Color.chatGPTBackground.edgesIgnoringSafeArea(.all))
     }
 }
